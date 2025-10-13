@@ -6,26 +6,43 @@ from pdf2image import convert_from_path
 import csv
 from tqdm import tqdm
 from PIL import Image
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+import requests
 
 # -----------------------------
 # หาก Tesseract ไม่ได้อยู่ใน PATH ให้ระบุ path ตรงนี้
 # เช่น:
 # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+# Load processor and model
+processor = TrOCRProcessor.from_pretrained('suchut/thaitrocr-base-handwritten-beta1')
+model = VisionEncoderDecoderModel.from_pretrained('suchut/thaitrocr-base-handwritten-beta1')
+
 # -----------------------------
 def preprocess_image(pil_img):
+    # แปลงจาก PIL -> OpenCV (RGB -> BGR)
     img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+    # แปลงเป็น grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # เพิ่ม contrast
+    # ลด noise เล็กน้อย
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # เพิ่ม contrast เพื่อช่วย OCR
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
 
-    # adaptive threshold
+    # ทำ adaptive threshold
     thresh = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-        cv2.THRESH_BINARY_INV, 15, 10
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        15,
+        10
     )
-    return img, thresh
+
+    return gray, thresh
 
 # -----------------------------
 def detect_table(thresh):
@@ -60,15 +77,25 @@ def extract_cells(img, table_mask):
 def ocr_cells(cell_images):
     results = []
     for (x, y, cell_img) in cell_images:
-        # แปลงเป็น grayscale สำหรับ Tesseract
-        gray = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
+        # ตรวจสอบจำนวน channel ก่อน
+        if len(cell_img.shape) == 3 and cell_img.shape[2] == 3:
+            gray = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = cell_img  # เป็น grayscale อยู่แล้ว
 
-        # OCR ด้วยภาษาไทย + อังกฤษ
-        text = pytesseract.image_to_string(
-            gray, lang="tha+eng", config="--psm 6"
-        ).strip()
+        # แปลงกลับเป็น PIL.Image
+        pil_img = Image.fromarray(gray).convert("RGB")
 
-        results.append((x, y, text))
+        pixel_values = processor(images=pil_img, return_tensors="pt").pixel_values
+        generated_ids = model.generate(pixel_values)
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+        # # OCR ด้วยภาษาไทย + อังกฤษ
+        # text = pytesseract.image_to_string(
+        #     gray, lang="tha+eng", config="--psm 6"
+        # ).strip()
+
+        results.append((x, y, generated_text))
     return results
 
 # -----------------------------
@@ -100,7 +127,7 @@ def save_to_csv(all_rows, out_path="output.csv"):
 # -----------------------------
 def extract_tables_from_pdf(pdf_path, out_csv="output.csv"):
     print(f"📖 Processing PDF: {pdf_path}")
-    pages = convert_from_path(pdf_path, dpi=300)
+    pages = convert_from_path(pdf_path, dpi=200)
 
     all_rows = []
     for i, page in enumerate(tqdm(pages, desc="Processing pages")):
