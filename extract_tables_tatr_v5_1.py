@@ -1,6 +1,7 @@
 import os
 import cv2
 import torch
+import datetime
 import numpy as np
 from PIL import Image
 from transformers import AutoProcessor, TableTransformerForObjectDetection
@@ -9,7 +10,8 @@ from pdf2image import convert_from_path
 
 # ======= CONFIG =======
 PDF_PATH = "test.pdf"
-OUTPUT_DIR = "output_cells"
+OUTPUT_EXTRACTED_CELLS_DIR = os.path.join("outputs", "extracted_cells")
+OUTPUT_DIR = str(os.path.join(OUTPUT_EXTRACTED_CELLS_DIR, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
 DEBUG_VISUALIZE = True
 MIN_TABLE_CONFIDENCE = 0.8
 # ======================
@@ -18,7 +20,6 @@ MIN_TABLE_CONFIDENCE = 0.8
 print("📦 Loading Table Transformer (microsoft/table-transformer-detection)...")
 processor = AutoProcessor.from_pretrained("microsoft/table-transformer-detection")
 model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
-
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -50,7 +51,20 @@ def extract_table_regions(image, tables, page_idx):
     crops = []
     for i, (box, score) in enumerate(tables):
         x1, y1, x2, y2 = box
-        table_crop = image[y1:y2, x1:x2]
+        # ปรับ margin (จำนวน pixel รอบขอบ)
+        margin = 10
+
+        # ตรวจสอบไม่ให้เกินขนาดภาพ
+        height, width = image.shape[:2]
+
+        # คำนวณขอบใหม่โดยไม่ให้เกินขอบภาพ
+        x1_m = max(x1 - margin, 0)
+        y1_m = max(y1 - margin, 0)
+        x2_m = min(x2 + margin, width)
+        y2_m = min(y2 + margin, height)
+
+        # crop table พร้อม margin
+        table_crop = image[y1_m:y2_m, x1_m:x2_m]
         crops.append((x1, y1, x2, y2, table_crop))
 
         if DEBUG_VISUALIZE:
