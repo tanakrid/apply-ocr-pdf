@@ -13,6 +13,7 @@ PDF_PATH = "test.pdf"
 OUTPUT_EXTRACTED_CELLS_DIR = os.path.join("outputs", "extracted_cells")
 OUTPUT_DIR = str(os.path.join(OUTPUT_EXTRACTED_CELLS_DIR, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
 DEBUG_VISUALIZE = True
+DEBUG_BORDER_SIZE = 5
 MIN_TABLE_CONFIDENCE = 0.8
 # ======================
 
@@ -68,9 +69,9 @@ def extract_table_regions(image, tables, page_idx):
         crops.append((x1, y1, x2, y2, table_crop))
 
         if DEBUG_VISUALIZE:
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 200, 0), 2)
-            cv2.putText(image, f"Table {i+1} ({score:.2f})", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 0), 2)
+            cv2.rectangle(image, (x1_m, y1_m), (x2_m, y2_m), (0, 200, 0), DEBUG_BORDER_SIZE)
+            cv2.putText(image, f"Table {i+1} ({score:.2f})", (x1_m, y1_m - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 0), DEBUG_BORDER_SIZE)
 
     if DEBUG_VISUALIZE:
         vis_path = os.path.join(OUTPUT_DIR, f"page_{page_idx+1}_detected.jpg")
@@ -165,7 +166,7 @@ def extract_cells_from_table(np_crop, base_name, save_dir):
         if DEBUG_VISUALIZE:
             vis = np_crop.copy()
             for (x, y, w, h) in row:
-                cv2.rectangle(vis, (x, y), (x+w, y+h), (0, 0, 255), 1)
+                cv2.rectangle(vis, (x, y), (x+w, y+h), (0, 0, 255), DEBUG_BORDER_SIZE)
             cv2.imwrite(os.path.join(save_dir, f"{base_name}_row{ridx+1}_preview.jpg"), vis)
 
 
